@@ -8,8 +8,8 @@ TOKEN = os.getenv("DISCORD_BOT_TOKEN")
 
 # 채널 ID를 여기에 입력
 CHANNELS = {
-    "SEOUL": {"id": 123456789012345678, "tz": "Asia/Seoul", "emoji": "🇰🇷"},
-    "HCMC": {"id": 987654321098765432, "tz": "Asia/Ho_Chi_Minh", "emoji": "🇻🇳"},
+    "SEOUL": {"id": 1384147844667281448, "tz": "Asia/Seoul", "emoji": "🇰🇷"},
+    "HCMC": {"id": 1384147887663087646, "tz": "Asia/Ho_Chi_Minh", "emoji": "🇻🇳"},
 }
 
 intents = discord.Intents.default()
