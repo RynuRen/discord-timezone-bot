@@ -2,7 +2,7 @@ name: Update Channel Time
 
 on:
   schedule:
-    - cron: "*/10 * * * *"  # 10분마다 실행
+    - cron: "0,10,20,30,40,50 * * * *"
   workflow_dispatch:
 
 jobs:
