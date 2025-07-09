@@ -1,0 +1,10 @@
+[project]
+name = "discord-timezone-bot"
+version = "0.1.0"
+description = "Discord bot that updates channel names with timezone information"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "discord-py>=2.5.2",
+    "pytz>=2025.2",
+]
