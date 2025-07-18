@@ -30,6 +30,33 @@ CHANNELS = {
 intents = discord.Intents.default()
 client = discord.Client(intents=intents)
 
+def get_availability_status(hour, minute, country):
+    """연락 가능 상태에 따른 이모지 반환"""
+    if country == "SEOUL":
+        # 한국 시간 기준
+        if 9 <= hour < 11 or (hour == 11 and minute < 30):  # 9:00-11:30 업무
+            return "💼"  # 연락 가능
+        elif (hour == 11 and minute >= 30) or (hour == 12 and minute < 30):  # 11:30-12:30 점심
+            return "🍜"  # 점심 시간 (연락 불가)
+        elif 12 <= hour < 18 or (hour == 12 and minute >= 30):  # 12:30-18:30 업무
+            return "💼"  # 연락 가능
+        elif hour >= 18 and minute >= 30:  # 18:30 이후 퇴근
+            return "🏠"  # 퇴근 후 (연락 불가)
+        else:
+            return "⏰"  # 일반 시간
+    else:  # HCMC
+        # 베트남 시간 기준
+        if 8 <= hour < 12 or (hour == 8 and minute >= 30):  # 8:30-12:00 업무
+            return "💼"  # 연락 가능
+        elif hour == 12:  # 12:00-13:30 점심
+            return "🍜"  # 점심 시간 (연락 불가)
+        elif 13 <= hour < 17 or (hour == 13 and minute >= 30):  # 13:30-17:30 업무
+            return "💼"  # 연락 가능
+        elif hour >= 17 and minute >= 30:  # 17:30 이후 퇴근
+            return "🏠"  # 퇴근 후 (연락 불가)
+        else:
+            return "⏰"  # 일반 시간
+
 async def update_channel_names():
     """모든 채널의 이름을 현재 시간으로 업데이트"""
     updated_count = 0
@@ -50,7 +77,11 @@ async def update_channel_names():
             tz = pytz.timezone(info["tz"])
             now = datetime.now(tz)
             time_str = now.strftime("%H：%M")
-            new_name = f"{info['emoji']}∥{time_str}"
+            
+            # 연락 가능 상태 이모지 가져오기
+            status_emoji = get_availability_status(now.hour, now.minute, name)
+            
+            new_name = f"{info['emoji']}∥{time_str} {status_emoji}"
             
             # 채널 이름이 이미 같다면 스킵
             if channel.name == new_name:
