@@ -71,11 +71,15 @@ def get_availability_status(now, country):
 
     if country == "SEOUL":
         # 한국 시간 기준
-        if 9 <= hour < 11 or (hour == 11 and minute < 30):  # 9:00-11:30 업무
+        if (
+            (9 < hour < 11)
+            or (hour == 9 and minute >= 30)
+            or (hour == 11 and minute < 30)
+        ):  # 9:30-11:29 업무
             return "💼"  # 연락 가능
         elif (hour == 11 and minute >= 30) or (
             hour == 12 and minute < 30
-        ):  # 11:30-12:30 점심
+        ):  # 11:30-12:29 점심
             return "🍜"  # 점심 시간 (연락 불가)
         elif (
             (12 < hour < 18)
