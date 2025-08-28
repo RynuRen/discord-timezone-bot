@@ -1,5 +1,6 @@
 import discord
 import holidays
+import os
 from datetime import datetime
 import pytz
 
@@ -190,9 +191,22 @@ def get_availability_status(now, country):
             return "🏠"  # 출근 전 (연락 불가)
 
 
+def get_night_mode_status(country):
+    """야간 모드에서 사용할 수면 상태 반환"""
+    if country == "SEOUL":
+        return "취침", "🌙"  # 한국어
+    else:  # HCMC
+        return "nghỉ ngơi", "🌙"  # 베트남어 (휴식)
+
+
 async def update_channel_names(client_instance):
     """모든 채널의 이름을 현재 시간으로 업데이트"""
     updated_count = 0
+
+    # 야간 모드 체크
+    is_night_mode = os.getenv("NIGHT_MODE", "false").lower() == "true"
+    if is_night_mode:
+        logger.info("[NIGHT_MODE] 야간 모드에서 실행 중입니다")
 
     for name, info in CHANNELS.items():
         try:
@@ -213,25 +227,35 @@ async def update_channel_names(client_instance):
                 )
                 continue
 
-            # 현재 시간 계산
-            tz = pytz.timezone(info["tz"])
-            now = datetime.now(tz)
-
-            # 휴일/주말 체크
-            holiday_name, holiday_emoji = get_holiday_info(now.date(), name)
-            if holiday_name:
-                # 휴일/주말인 경우 - 공휴일명과 해당 이모지 사용
-                time_str = holiday_name
-                status_emoji = holiday_emoji
+            # 야간 모드 처리
+            if is_night_mode:
+                # 야간 모드에서는 수면 상태 표시
+                night_text, night_emoji = get_night_mode_status(name)
+                new_name = f"{info['emoji']}∥{night_text} {night_emoji}"
                 logger.info(
-                    f"[HOLIDAY] {info['name']} - {holiday_name} ({holiday_emoji})"
+                    f"[NIGHT_MODE] {info['name']} - {night_text} ({night_emoji})"
                 )
             else:
-                # 평일인 경우 - 시간과 업무 상태 이모지 사용
-                time_str = now.strftime("%H：%M")
-                status_emoji = get_availability_status(now, name)
+                # 일반 모드에서는 기존 로직 사용
+                # 현재 시간 계산
+                tz = pytz.timezone(info["tz"])
+                now = datetime.now(tz)
 
-            new_name = f"{info['emoji']}∥{time_str} {status_emoji}"
+                # 휴일/주말 체크
+                holiday_name, holiday_emoji = get_holiday_info(now.date(), name)
+                if holiday_name:
+                    # 휴일/주말인 경우 - 공휴일명과 해당 이모지 사용
+                    time_str = holiday_name
+                    status_emoji = holiday_emoji
+                    logger.info(
+                        f"[HOLIDAY] {info['name']} - {holiday_name} ({holiday_emoji})"
+                    )
+                else:
+                    # 평일인 경우 - 시간과 업무 상태 이모지 사용
+                    time_str = now.strftime("%H：%M")
+                    status_emoji = get_availability_status(now, name)
+
+                new_name = f"{info['emoji']}∥{time_str} {status_emoji}"
 
             # 채널 이름이 이미 같다면 스킵
             if channel.name == new_name:
@@ -259,8 +283,12 @@ async def update_channel_names(client_instance):
             logger.error(f"[ERROR] {info['name']} 채널 업데이트 실패: {e}")
 
     if updated_count == 0:
-        logger.info("[INFO] 업데이트가 필요한 채널이 없습니다")
+        mode_text = "야간 모드" if is_night_mode else "일반 모드"
+        logger.info(f"[INFO] {mode_text}에서 업데이트가 필요한 채널이 없습니다")
     else:
-        logger.info(f"[COMPLETE] 총 {updated_count}개 채널이 업데이트되었습니다")
+        mode_text = "야간 모드" if is_night_mode else "일반 모드"
+        logger.info(
+            f"[COMPLETE] {mode_text}에서 총 {updated_count}개 채널이 업데이트되었습니다"
+        )
 
     return updated_count
