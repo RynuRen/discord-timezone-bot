@@ -1,202 +1,183 @@
-import discord
-import logging
-import holidays
-from datetime import datetime
-import pytz
-import os
+import time
+import subprocess
 import sys
+from datetime import datetime, timedelta
+import os
+import pytz
+
+try:
+    from .utils import setup_logging, check_discord_token
+except ImportError:
+    # 직접 실행될 때를 위한 대체 import
+    from utils import setup_logging, check_discord_token
 
 # 로깅 설정
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-    handlers=[
-        logging.StreamHandler(sys.stdout),
-    ],
-)
-logger = logging.getLogger("discord_timezone_bot")
-
-TOKEN = os.getenv("DISCORD_BOT_TOKEN")
-
-if not TOKEN:
-    logger.error("[ERROR] DISCORD_BOT_TOKEN 환경변수가 설정되지 않았습니다!")
-    sys.exit(1)
-
-# 채널 설정
-CHANNELS = {
-    "SEOUL": {
-        "id": 1384147639293055036,
-        "tz": "Asia/Seoul",
-        "emoji": "🇰🇷",
-        "name": "서울",
-    },
-    "HCMC": {
-        "id": 1384147698747445401,
-        "tz": "Asia/Ho_Chi_Minh",
-        "emoji": "🇻🇳",
-        "name": "호치민",
-    },
-}
-
-KR_HOLIDAYS = holidays.KR()
-VN_HOLIDAYS = holidays.VN()
-
-intents = discord.Intents.default()
-client = discord.Client(intents=intents)
+logger = setup_logging("discord_main")
 
 
-def is_off_day(date, country):
-    """주말 또는 공휴일 여부 확인"""
-    weekday = date.weekday()
+def run_bot():
+    """봇을 실행하는 함수"""
+    current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    logger.info(f"[TIME] 봇 실행 시작: {current_time}")
 
-    if weekday >= 5:  # 토요일(5), 일요일(6)
-        return True
-
-    if country == "SEOUL":
-        return date in KR_HOLIDAYS
-    elif country == "HCMC":
-        return date in VN_HOLIDAYS
-
-    return False
-
-
-def get_availability_status(now, country):
-    """연락 가능 상태에 따른 이모지 반환"""
-
-    if is_off_day(now, country):
-        return "🎉"  # 공휴일, 주말
-
-    hour = now.hour
-    minute = now.minute
-
-    if country == "SEOUL":
-        # 한국 시간 기준
-        if (
-            (9 < hour < 11)
-            or (hour == 9 and minute >= 30)
-            or (hour == 11 and minute < 30)
-        ):  # 9:30-11:29 업무
-            return "💼"  # 연락 가능
-        elif (hour == 11 and minute >= 30) or (
-            hour == 12 and minute < 30
-        ):  # 11:30-12:29 점심
-            return "🍜"  # 점심 시간 (연락 불가)
-        elif (
-            (12 < hour < 18)
-            or (hour == 12 and minute >= 30)
-            or (hour == 18 and minute < 30)
-        ):  # 12:30-18:29 업무
-            return "💼"  # 연락 가능
-        elif hour > 18 or (hour == 18 and minute >= 30):  # 18:30 이후 퇴근
-            return "🏠"  # 퇴근 후 (연락 불가)
-        else:
-            return "🏠"  # 출근 전 (연락 불가)
-    else:  # HCMC
-        # 베트남 시간 기준
-        if (8 < hour < 12) or (hour == 8 and minute >= 30):  # 8:30-11:59 업무
-            return "💼"  # 연락 가능
-        elif hour == 12 or (hour == 13 and minute < 30):  # 12:00-13:29 점심
-            return "🍜"  # 점심 시간 (연락 불가)
-        elif (
-            (13 < hour < 17)
-            or (hour == 13 and minute >= 30)
-            or (hour == 17 and minute < 30)
-        ):  # 13:30-17:29 업무
-            return "💼"  # 연락 가능
-        elif hour > 17 or (hour == 17 and minute >= 30):  # 17:30 이후 퇴근
-            return "🏠"  # 퇴근 후 (연락 불가)
-        else:
-            return "🏠"  # 출근 전 (연락 불가)
-
-
-async def update_channel_names():
-    """모든 채널의 이름을 현재 시간으로 업데이트"""
-    updated_count = 0
-
-    for name, info in CHANNELS.items():
+    try:
+        # 환경변수 확인
         try:
-            channel = client.get_channel(info["id"])
-            if not channel:
-                logger.warning(
-                    f"[WARNING] 채널을 찾을 수 없습니다 (ID: {info['id']}, {info['name']})"
-                )
-                continue
+            check_discord_token()
+        except ValueError as e:
+            logger.error(f"[ERROR] {e}")
+            return False
 
-            # 길드 채널인지 확인 (DM 채널 제외)
-            if not isinstance(
-                channel,
-                (discord.TextChannel, discord.VoiceChannel, discord.CategoryChannel),
-            ):
-                logger.warning(
-                    f"[WARNING] 지원하지 않는 채널 타입입니다 (ID: {info['id']}, {info['name']})"
-                )
-                continue
+        # 봇 실행 - 모듈로 실행
+        result = subprocess.run(
+            [sys.executable, "-m", "bot.bot"],
+            capture_output=True,
+            text=True,
+            timeout=60,  # 타임아웃 증가
+            cwd=os.path.dirname(
+                os.path.dirname(os.path.abspath(__file__))
+            ),  # 프로젝트 루트
+        )
 
-            # 현재 시간 계산
-            tz = pytz.timezone(info["tz"])
-            now = datetime.now(tz)
-            time_str = now.strftime("%H：%M")
+        if result.returncode == 0:
+            logger.info("[SUCCESS] 봇이 성공적으로 실행되었습니다")
 
-            # 연락 가능 상태 이모지 가져오기
-            status_emoji = get_availability_status(now, name)
+            # stdout 출력 (봇의 로그)
+            if result.stdout.strip():
+                for line in result.stdout.strip().split("\n"):
+                    if line.strip():
+                        logger.info(f"  [BOT] {line.strip()}")
 
-            new_name = f"{info['emoji']}∥{time_str} {status_emoji}"
+            return True
+        else:
+            logger.error(f"[FAIL] 봇 실행 실패 (exit code: {result.returncode})")
 
-            # 채널 이름이 이미 같다면 스킵
-            if channel.name == new_name:
-                logger.debug(
-                    f"[SKIP] {info['name']} 채널 이름이 이미 최신입니다: {new_name}"
-                )
-                continue
+            # stderr 출력
+            if result.stderr.strip():
+                for line in result.stderr.strip().split("\n"):
+                    if line.strip():
+                        logger.error(f"  [ERROR] {line.strip()}")
 
-            # 채널 이름 업데이트
-            await channel.edit(name=new_name)
-            logger.info(
-                f"[SUCCESS] {info['name']} 채널 업데이트: {channel.name} -> {new_name}"
-            )
-            updated_count += 1
+            return False
 
-        except discord.Forbidden:
-            logger.error(
-                f"[FORBIDDEN] {info['name']} 채널 수정 권한이 없습니다 (ID: {info['id']})"
-            )
-        except discord.NotFound:
-            logger.error(
-                f"[NOTFOUND] {info['name']} 채널을 찾을 수 없습니다 (ID: {info['id']})"
-            )
-        except Exception as e:
-            logger.error(f"[ERROR] {info['name']} 채널 업데이트 실패: {e}")
+    except subprocess.TimeoutExpired:
+        logger.error("[TIMEOUT] 봇 실행이 타임아웃되었습니다 (60초)")
+        return False
+    except FileNotFoundError:
+        logger.error("[ERROR] Python 인터프리터를 찾을 수 없습니다")
+        return False
+    except Exception as e:
+        logger.error(f"[ERROR] 예상치 못한 오류 발생: {e}")
+        return False
 
-    if updated_count == 0:
-        logger.info("[INFO] 업데이트가 필요한 채널이 없습니다")
+
+def job_wrapper():
+    """스케줄 작업 래퍼 함수"""
+    now = datetime.now(pytz.timezone("Asia/Seoul"))
+
+    # 한국 시간 기준 22:00 ~ 06:59 사이에는 실행하지 않음
+    if now.hour >= 22 or now.hour < 7:
+        logger.info(
+            f"[SKIP] 현재 시간({now.strftime('%H:%M')})이 업데이트 제외 시간이므로 건너뜁니다"
+        )
+        logger.info("[WAIT] 다음 실행까지 대기 중...")
+        print("-" * 50)
+        return
+
+    minute = now.minute
+    logger.info(f"[START] 스케줄 작업 시작 (현재 시간: {minute}분)")
+
+    success = run_bot()
+
+    if success:
+        logger.info("[COMPLETE] 스케줄 작업 완료")
     else:
-        logger.info(f"[COMPLETE] 총 {updated_count}개 채널이 업데이트되었습니다")
+        logger.warning("[WARNING] 스케줄 작업 중 오류 발생")
+
+    logger.info("[WAIT] 다음 실행까지 대기 중...")
+    print("-" * 50)  # 구분선
 
 
-@client.event
-async def on_ready():
-    logger.info(f"[LOGIN] 봇이 {client.user}로 로그인했습니다")
-    logger.info(f"[CONNECT] {len(client.guilds)}개 서버에 연결되었습니다")
+def calculate_next_run_time():
+    """다음 10분 단위 실행 시간을 계산"""
+    now = datetime.now()
+    current_minute = now.minute
 
-    # 채널 업데이트 실행
-    await update_channel_names()
+    # 다음 10분 단위 계산 (0, 10, 20, 30, 40, 50)
+    next_minute = ((current_minute // 10) + 1) * 10
 
-    logger.info("[DONE] 봇 작업 완료, 연결을 종료합니다")
-    await client.close()
+    if next_minute >= 60:
+        # 다음 시간의 0분
+        next_run = now.replace(minute=0, second=0, microsecond=0) + timedelta(hours=1)
+    else:
+        # 같은 시간의 다음 10분 단위
+        next_run = now.replace(minute=next_minute, second=0, microsecond=0)
+
+    return next_run
 
 
-@client.event
-async def on_error(event, *args, **kwargs):
-    logger.error(f"[ERROR] Discord 이벤트 오류 발생: {event}", exc_info=True)
+def wait_until_next_scheduled_time():
+    """다음 10분 단위까지 대기"""
+    next_run = calculate_next_run_time()
+    now = datetime.now()
+    wait_seconds = (next_run - now).total_seconds()
+
+    logger.info(
+        f"[SCHEDULE] 다음 실행 예정 시간: {next_run.strftime('%Y-%m-%d %H:%M:%S')}"
+    )
+    logger.info(f"[WAIT] {wait_seconds:.0f}초 후에 실행됩니다")
+
+    if wait_seconds > 0:
+        time.sleep(wait_seconds)
+
+
+def main():
+    """메인 스케줄러 함수"""
+    logger.info("[INIT] Discord 타임존 봇 스케줄러를 시작합니다")
+    logger.info("[SCHEDULE] 정각 10분 단위로 실행됩니다 (0, 10, 20, 30, 40, 50분)")
+    logger.info("[SCHEDULE] 단, 한국시간 기준 22:00~06:59 사이에는 실행되지 않습니다")
+    logger.info("[SCHEDULE] 휴일/주말은 각 채널별로 개별 처리됩니다")
+
+    # 현재 시간대 정보 출력
+    current_time = datetime.now()
+    logger.info(
+        f"[TIMEZONE] 현재 시스템 시간: {current_time.strftime('%Y-%m-%d %H:%M:%S %Z')}"
+    )
+    logger.info(f"[TIMEZONE] 시간대: {os.getenv('TZ', 'Unknown')}")
+
+    # 환경변수 확인
+    try:
+        check_discord_token()
+    except ValueError as e:
+        logger.error(f"[ERROR] {e}")
+        logger.error("[HELP] .env 파일을 생성하거나 환경변수를 설정해주세요")
+        sys.exit(1)
+
+    # 현재 시간이 10분 단위인지 확인
+    current_minute = datetime.now().minute
+    if current_minute % 10 == 0:
+        logger.info("[IMMEDIATE] 현재가 정각 10분 단위입니다. 즉시 실행합니다...")
+        job_wrapper()
+    else:
+        logger.info(
+            f"[WAIT] 현재 시간: {current_minute}분 - 다음 10분 단위까지 대기합니다"
+        )
+
+    # 메인 루프 - 정각 10분 단위로 실행
+    try:
+        while True:
+            # 다음 10분 단위까지 대기
+            wait_until_next_scheduled_time()
+
+            # 정확한 시간에 실행
+            job_wrapper()
+
+    except KeyboardInterrupt:
+        logger.info("[STOP] 사용자에 의해 스케줄러가 중지되었습니다")
+    except Exception as e:
+        logger.error(f"[ERROR] 스케줄러 오류: {e}")
+        sys.exit(1)
 
 
 if __name__ == "__main__":
-    try:
-        logger.info("[INIT] Discord 타임존 봇을 시작합니다...")
-        client.run(TOKEN)
-    except discord.LoginFailure:
-        logger.error("[LOGINF] Discord 토큰이 잘못되었습니다")
-        sys.exit(1)
-    except Exception as e:
-        logger.error(f"[ERROR] 봇 실행 중 오류 발생: {e}")
-        sys.exit(1)
+    main()

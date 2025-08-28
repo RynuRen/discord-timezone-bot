@@ -25,4 +25,4 @@ ENV PATH="/app/.venv/bin:$PATH"
 ENV PYTHONPATH="/app"
 
 # 스크립트 실행
-CMD ["python", "-m", "bot.scheduler"]
+CMD ["python", "-m", "bot.main"]

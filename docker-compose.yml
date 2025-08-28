@@ -3,8 +3,9 @@ services:
     build: 
       context: .
       dockerfile: bot/Dockerfile
+    container_name: discord-bot
     environment:
       - DISCORD_BOT_TOKEN=${DISCORD_BOT_TOKEN}
       - TZ=Asia/Seoul
-    restart: unless-stopped
-    command: ["python", "-m", "bot.scheduler"]
+    restart: always
+    command: ["python", "-m", "bot.main"]
