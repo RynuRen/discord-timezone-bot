@@ -1,9 +1,10 @@
-import time
 import subprocess
 import sys
-from datetime import datetime, timedelta
+from datetime import datetime
 import os
 import pytz
+from apscheduler.schedulers.blocking import BlockingScheduler
+from apscheduler.triggers.cron import CronTrigger
 
 try:
     from .utils import setup_logging, check_discord_token
@@ -98,48 +99,19 @@ def job_wrapper():
     print("-" * 50)  # 구분선
 
 
-def calculate_next_run_time():
-    """다음 10분 단위 실행 시간을 계산"""
-    now = datetime.now()
-    current_minute = now.minute
-
-    # 다음 10분 단위 계산 (0, 10, 20, 30, 40, 50)
-    next_minute = ((current_minute // 10) + 1) * 10
-
-    if next_minute >= 60:
-        # 다음 시간의 0분
-        next_run = now.replace(minute=0, second=0, microsecond=0) + timedelta(hours=1)
-    else:
-        # 같은 시간의 다음 10분 단위
-        next_run = now.replace(minute=next_minute, second=0, microsecond=0)
-
-    return next_run
-
-
-def wait_until_next_scheduled_time():
-    """다음 10분 단위까지 대기"""
-    next_run = calculate_next_run_time()
-    now = datetime.now()
-    wait_seconds = (next_run - now).total_seconds()
-
-    logger.info(
-        f"[SCHEDULE] 다음 실행 예정 시간: {next_run.strftime('%Y-%m-%d %H:%M:%S')}"
-    )
-    logger.info(f"[WAIT] {wait_seconds:.0f}초 후에 실행됩니다")
-
-    if wait_seconds > 0:
-        time.sleep(wait_seconds)
+# APScheduler 사용으로 대체하여 제거됨
 
 
 def main():
-    """메인 스케줄러 함수"""
-    logger.info("[INIT] Discord 타임존 봇 스케줄러를 시작합니다")
+    """메인 스케줄러 함수 - APScheduler 사용"""
+    logger.info("[INIT] Discord 타임존 봇 스케줄러를 시작합니다 (APScheduler)")
     logger.info("[SCHEDULE] 정각 10분 단위로 실행됩니다 (0, 10, 20, 30, 40, 50분)")
     logger.info("[SCHEDULE] 단, 한국시간 기준 22:00~06:59 사이에는 실행되지 않습니다")
     logger.info("[SCHEDULE] 휴일/주말은 각 채널별로 개별 처리됩니다")
 
     # 현재 시간대 정보 출력
     current_time = datetime.now()
+    kst = pytz.timezone("Asia/Seoul")
     logger.info(
         f"[TIMEZONE] 현재 시스템 시간: {current_time.strftime('%Y-%m-%d %H:%M:%S %Z')}"
     )
@@ -153,27 +125,38 @@ def main():
         logger.error("[HELP] .env 파일을 생성하거나 환경변수를 설정해주세요")
         sys.exit(1)
 
-    # 현재 시간이 10분 단위인지 확인
-    current_minute = datetime.now().minute
+    # APScheduler 설정
+    scheduler = BlockingScheduler(timezone=kst)
+
+    # 매 10분마다 정확히 0초에 실행 (0, 10, 20, 30, 40, 50분)
+    trigger = CronTrigger(
+        minute="0,10,20,30,40,50",
+        second=0,  # 정확히 0초에 실행
+        timezone=kst,
+    )
+
+    scheduler.add_job(
+        job_wrapper,
+        trigger=trigger,
+        id="discord_bot_job",
+        max_instances=1,  # 동시 실행 방지
+        coalesce=True,  # 누락된 실행 합치기
+        misfire_grace_time=30,  # 30초 내 지연은 허용
+    )
+
+    # 현재 시간이 10분 단위라면 즉시 실행
+    current_minute = datetime.now(kst).minute
     if current_minute % 10 == 0:
         logger.info("[IMMEDIATE] 현재가 정각 10분 단위입니다. 즉시 실행합니다...")
         job_wrapper()
-    else:
-        logger.info(
-            f"[WAIT] 현재 시간: {current_minute}분 - 다음 10분 단위까지 대기합니다"
-        )
 
-    # 메인 루프 - 정각 10분 단위로 실행
     try:
-        while True:
-            # 다음 10분 단위까지 대기
-            wait_until_next_scheduled_time()
-
-            # 정확한 시간에 실행
-            job_wrapper()
-
+        logger.info("[SCHEDULER] APScheduler 시작...")
+        logger.info("[SCHEDULER] 정확히 매 10분마다 0초에 실행됩니다")
+        scheduler.start()
     except KeyboardInterrupt:
         logger.info("[STOP] 사용자에 의해 스케줄러가 중지되었습니다")
+        scheduler.shutdown()
     except Exception as e:
         logger.error(f"[ERROR] 스케줄러 오류: {e}")
         sys.exit(1)

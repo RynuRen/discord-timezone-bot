@@ -120,13 +120,7 @@ def get_holiday_info(date, country):
     """공휴일 정보 반환 (공휴일명, 이모지)"""
     weekday = date.weekday()
 
-    # 주말 처리
-    if weekday == 5:  # 토요일
-        return "토요일", "🌤️"
-    elif weekday == 6:  # 일요일
-        return "일요일", "☀️"
-
-    # 공휴일 처리
+    # 공휴일 처리 (주말보다 우선)
     if country == "SEOUL":
         if date in KR_HOLIDAYS:
             holiday_name = KR_HOLIDAYS[date]
@@ -141,6 +135,12 @@ def get_holiday_info(date, country):
             display_name = HOLIDAY_SHORT_NAMES.get(holiday_name, holiday_name)
             emoji = VN_HOLIDAY_EMOJIS.get(holiday_name, DEFAULT_HOLIDAY_EMOJI)
             return display_name, emoji
+
+    # 주말 처리 (공휴일이 아닐 경우에만)
+    if weekday == 5:  # 토요일
+        return "토요일", "🌤️"
+    elif weekday == 6:  # 일요일
+        return "일요일", "☀️"
 
     return None, None
 
