@@ -1,5 +1,6 @@
 import subprocess
 import sys
+import time
 from datetime import datetime
 import os
 import pytz
@@ -18,6 +19,7 @@ logger = setup_logging("discord_main")
 
 def run_bot():
     """봇을 실행하는 함수"""
+    start_time = time.time()
     current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     logger.info(f"[TIME] 봇 실행 시작: {current_time}")
 
@@ -34,14 +36,25 @@ def run_bot():
             [sys.executable, "-m", "bot.bot"],
             capture_output=True,
             text=True,
-            timeout=60,  # 타임아웃 증가
+            timeout=30,  # 타임아웃 단축 (빠른 실패)
             cwd=os.path.dirname(
                 os.path.dirname(os.path.abspath(__file__))
             ),  # 프로젝트 루트
         )
 
         if result.returncode == 0:
-            logger.info("[SUCCESS] 봇이 성공적으로 실행되었습니다")
+            execution_time = time.time() - start_time
+            logger.info(
+                f"[SUCCESS] 봇이 성공적으로 실행되었습니다 (실행시간: {execution_time:.2f}초)"
+            )
+
+            # 성능 경고
+            if execution_time > 20:
+                logger.warning(
+                    f"[PERFORMANCE] 실행 시간이 길어지고 있습니다: {execution_time:.2f}초"
+                )
+            elif execution_time > 10:
+                logger.info(f"[PERFORMANCE] 실행 시간: {execution_time:.2f}초")
 
             # stdout 출력 (봇의 로그)
             if result.stdout.strip():
@@ -62,7 +75,7 @@ def run_bot():
             return False
 
     except subprocess.TimeoutExpired:
-        logger.error("[TIMEOUT] 봇 실행이 타임아웃되었습니다 (60초)")
+        logger.error("[TIMEOUT] 봇 실행이 타임아웃되었습니다 (30초)")
         return False
     except FileNotFoundError:
         logger.error("[ERROR] Python 인터프리터를 찾을 수 없습니다")
@@ -74,6 +87,7 @@ def run_bot():
 
 def run_bot_night_mode():
     """야간 모드용 봇 실행 함수"""
+    start_time = time.time()
     current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     logger.info(f"[NIGHT_TIME] 야간 모드 봇 실행 시작: {current_time}")
 
@@ -93,7 +107,7 @@ def run_bot_night_mode():
             [sys.executable, "-m", "bot.bot"],
             capture_output=True,
             text=True,
-            timeout=60,
+            timeout=30,  # 타임아웃 단축 (빠른 실패)
             env=env,  # 환경변수 전달
             cwd=os.path.dirname(
                 os.path.dirname(os.path.abspath(__file__))
@@ -101,7 +115,20 @@ def run_bot_night_mode():
         )
 
         if result.returncode == 0:
-            logger.info("[SUCCESS] 야간 모드 봇이 성공적으로 실행되었습니다")
+            execution_time = time.time() - start_time
+            logger.info(
+                f"[SUCCESS] 야간 모드 봇이 성공적으로 실행되었습니다 (실행시간: {execution_time:.2f}초)"
+            )
+
+            # 성능 경고
+            if execution_time > 20:
+                logger.warning(
+                    f"[PERFORMANCE] 야간 모드 실행 시간이 길어지고 있습니다: {execution_time:.2f}초"
+                )
+            elif execution_time > 10:
+                logger.info(
+                    f"[PERFORMANCE] 야간 모드 실행 시간: {execution_time:.2f}초"
+                )
 
             # stdout 출력 (봇의 로그)
             if result.stdout.strip():
@@ -124,7 +151,7 @@ def run_bot_night_mode():
             return False
 
     except subprocess.TimeoutExpired:
-        logger.error("[TIMEOUT] 야간 모드 봇 실행이 타임아웃되었습니다 (60초)")
+        logger.error("[TIMEOUT] 야간 모드 봇 실행이 타임아웃되었습니다 (30초)")
         return False
     except FileNotFoundError:
         logger.error("[ERROR] Python 인터프리터를 찾을 수 없습니다")
@@ -249,7 +276,7 @@ def main():
         id="discord_bot_normal",
         max_instances=1,
         coalesce=True,
-        misfire_grace_time=30,
+        misfire_grace_time=180,  # 3분으로 증가
     )
 
     scheduler.add_job(
@@ -258,7 +285,7 @@ def main():
         id="discord_bot_night",
         max_instances=1,
         coalesce=True,
-        misfire_grace_time=30,
+        misfire_grace_time=180,  # 3분으로 증가
     )
 
     # 현재 시간에 따른 즉시 실행 처리
