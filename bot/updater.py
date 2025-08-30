@@ -139,9 +139,9 @@ def get_holiday_info(date, country):
 
     # 주말 처리 (공휴일이 아닐 경우에만)
     if weekday == 5:  # 토요일
-        return "토요일", "🌤️"
+        return "Saturday", "🌤️"
     elif weekday == 6:  # 일요일
-        return "일요일", "☀️"
+        return "Sunday", "☀️"
 
     return None, None
 
