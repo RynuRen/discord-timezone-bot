@@ -9,9 +9,11 @@ from apscheduler.triggers.cron import CronTrigger
 
 try:
     from .utils import setup_logging, check_discord_token
+    from .updater import calculate_next_update_time
 except ImportError:
     # 직접 실행될 때를 위한 대체 import
     from utils import setup_logging, check_discord_token
+    from updater import calculate_next_update_time
 
 # 로깅 설정
 logger = setup_logging("discord_main")
@@ -206,6 +208,29 @@ def job_wrapper():
         print("-" * 50)
         return
 
+    # 점진적 개선: 실제 업데이트가 필요한 시점인지 체크
+    try:
+        next_update_time = calculate_next_update_time(now)
+        time_until_update = (next_update_time - now).total_seconds()
+
+        # 다음 업데이트까지 5분 이상 남았다면 스킵 (효율성 개선)
+        if time_until_update > 300:  # 5분 = 300초
+            logger.info(
+                f"[EFFICIENCY] 다음 업데이트까지 {time_until_update / 60:.1f}분 남음 - 실행 스킵"
+            )
+            logger.info(
+                f"[NEXT_UPDATE] 다음 업데이트 예정: {next_update_time.strftime('%H:%M')}"
+            )
+            logger.info("[WAIT] 다음 실행까지 대기 중...")
+            print("-" * 50)
+            return
+        else:
+            logger.info(
+                f"[EFFICIENCY] 다음 업데이트까지 {time_until_update / 60:.1f}분 - 실행 필요"
+            )
+    except Exception as e:
+        logger.warning(f"[WARNING] 업데이트 시점 계산 실패: {e} - 기본 로직으로 진행")
+
     minute = now.minute
     logger.info(f"[START] 스케줄 작업 시작 (현재 시간: {minute}분)")
 
@@ -293,28 +318,30 @@ def main():
     current_hour = current_time.hour
     current_minute = current_time.minute
 
-    # 야간 시간대(22:01~06:59)에 시작되면 즉시 야간 모드로 전환
+    # 봇 초기 실행 시 무조건 한번 업데이트 (사용자 요구사항)
+    logger.info(
+        f"[IMMEDIATE] 봇 초기 실행 - 현재 상태로 무조건 업데이트합니다 ({current_time.strftime('%H:%M')})"
+    )
+
+    # 야간 시간대는 야간 모드로, 그 외는 일반 모드로 업데이트
     if (
         (current_hour == 22 and current_minute > 0)
         or (current_hour > 22)
         or current_hour < 7
     ):
-        logger.info(
-            f"[IMMEDIATE] 야간 시간대({current_time.strftime('%H:%M')}) - 즉시 야간 모드로 전환합니다..."
-        )
+        logger.info("[IMMEDIATE] 야간 시간대 - 야간 모드로 업데이트")
         success = run_bot_night_mode()
-        if success:
-            logger.info("[IMMEDIATE] 야간 모드 전환 완료")
-        else:
-            logger.warning("[IMMEDIATE] 야간 모드 전환 실패")
-    # 정확히 10분 단위일 때 즉시 실행
-    elif current_minute % 10 == 0:
-        if current_hour == 22:
-            logger.info("[IMMEDIATE] 22:00 - 즉시 야간 모드로 전환합니다...")
-        elif 7 <= current_hour <= 21:
-            logger.info("[IMMEDIATE] 업무 시간 - 즉시 실행합니다...")
+    else:
+        logger.info("[IMMEDIATE] 일반 시간대 - 일반 모드로 업데이트")
+        success = run_bot()
 
-        job_wrapper()
+    if success:
+        logger.info("[IMMEDIATE] 초기 업데이트 완료")
+    else:
+        logger.warning("[IMMEDIATE] 초기 업데이트 실패")
+
+    logger.info("[IMMEDIATE] 이제 스케줄러로 전환하여 효율성 체크가 적용됩니다")
+    print("-" * 50)
 
     try:
         logger.info("[SCHEDULER] APScheduler 시작...")

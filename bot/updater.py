@@ -1,7 +1,7 @@
 import discord
 import holidays
 import os
-from datetime import datetime
+from datetime import datetime, timedelta
 import pytz
 
 try:
@@ -144,6 +144,90 @@ def get_holiday_info(date, country):
         return "Sunday", "☀️"
 
     return None, None
+
+
+def calculate_next_update_time(current_time=None):
+    """다음 업데이트가 실제로 필요한 시점을 계산"""
+    if current_time is None:
+        current_time = datetime.now(pytz.timezone("Asia/Seoul"))
+
+    # 한국 시간 기준으로 계산
+    korea_tz = pytz.timezone("Asia/Seoul")
+    if current_time.tzinfo is None:
+        current_time = korea_tz.localize(current_time)
+    else:
+        current_time = current_time.astimezone(korea_tz)
+
+    current_hour = current_time.hour
+    current_minute = current_time.minute
+    current_date = current_time.date()
+
+    # 1. 야간 시간 (22:01 ~ 06:59): 다음날 07:00
+    if (
+        (current_hour == 22 and current_minute > 0)
+        or (current_hour > 22)
+        or current_hour < 7
+    ):
+        next_day = current_time + timedelta(days=1)
+        return korea_tz.localize(
+            datetime.combine(next_day.date(), datetime.min.time().replace(hour=7))
+        )
+
+    # 2. 22:00 정각: 야간모드 전환이므로 즉시 실행 필요
+    if current_hour == 22 and current_minute == 0:
+        return current_time
+
+    # 3. 07:00 정각: 정상모드 복구이므로 즉시 실행 필요
+    if current_hour == 7 and current_minute == 0:
+        return current_time
+
+    # 4. 주말/공휴일 체크 (서울 기준)
+    if is_off_day(current_date, "SEOUL"):
+        # 주말/공휴일인 경우: 다음 평일 07:00 또는 자정 공휴일 체크
+        next_day = current_time + timedelta(days=1)
+
+        # 자정에 공휴일 상태가 바뀔 수 있으므로 자정도 체크
+        midnight_today = korea_tz.localize(
+            datetime.combine(current_date + timedelta(days=1), datetime.min.time())
+        )
+
+        # 내일도 휴일인지 확인
+        if is_off_day(next_day.date(), "SEOUL"):
+            # 계속 휴일이면 자정에 한번 체크 (공휴일 이름이 바뀔 수 있음)
+            return midnight_today
+        else:
+            # 내일이 평일이면 07:00에 정상모드로 복구
+            return korea_tz.localize(
+                datetime.combine(next_day.date(), datetime.min.time().replace(hour=7))
+            )
+
+    # 5. 평일 업무시간 (07:00-21:50): 다음 10분 단위
+    if 7 <= current_hour < 22:
+        # 현재 분을 10분 단위로 올림
+        next_minute = ((current_minute // 10) + 1) * 10
+
+        if next_minute >= 60:
+            # 다음 시간으로
+            next_hour = current_hour + 1
+            next_minute = 0
+
+            if next_hour >= 22:
+                # 22시가 되면 야간모드
+                return korea_tz.localize(
+                    datetime.combine(current_date, datetime.min.time().replace(hour=22))
+                )
+        else:
+            next_hour = current_hour
+
+        return korea_tz.localize(
+            datetime.combine(
+                current_date,
+                datetime.min.time().replace(hour=next_hour, minute=next_minute),
+            )
+        )
+
+    # 기본값: 1시간 후 (예외 상황)
+    return current_time + timedelta(hours=1)
 
 
 def get_availability_status(now, country):
