@@ -213,8 +213,16 @@ def job_wrapper():
         next_update_time = calculate_next_update_time(now)
         time_until_update = (next_update_time - now).total_seconds()
 
-        # 다음 업데이트까지 5분 이상 남았다면 스킵 (효율성 개선)
-        if time_until_update > 300:  # 5분 = 300초
+        # 평일 업무시간(07:00-21:50)에는 정확히 10분 단위로 실행해야 함
+        is_workday_hours = (
+            7 <= current_hour <= 21 and now.weekday() < 5  # 월-금
+        )
+
+        # 평일 업무시간이면 5분 기준 무시하고 실행
+        if is_workday_hours:
+            logger.info(f"[WORKDAY] 평일 업무시간 - 정확한 시간 업데이트를 위해 실행")
+        # 평일 업무시간이 아니면 5분 기준 효율성 체크
+        elif time_until_update > 300:  # 5분 = 300초
             logger.info(
                 f"[EFFICIENCY] 다음 업데이트까지 {time_until_update / 60:.1f}분 남음 - 실행 스킵"
             )

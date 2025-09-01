@@ -162,16 +162,33 @@ def calculate_next_update_time(current_time=None):
     current_minute = current_time.minute
     current_date = current_time.date()
 
-    # 1. 야간 시간 (22:01 ~ 06:59): 다음날 07:00
+    # 1. 야간 시간 (22:01 ~ 06:59): 우선 자정 체크, 그 다음 07:00
     if (
         (current_hour == 22 and current_minute > 0)
         or (current_hour > 22)
         or current_hour < 7
     ):
-        next_day = current_time + timedelta(days=1)
-        return korea_tz.localize(
-            datetime.combine(next_day.date(), datetime.min.time().replace(hour=7))
-        )
+        # 자정에 주말 변경이 있는지 먼저 체크
+        tomorrow = current_date + timedelta(days=1)
+        today_weekend = is_off_day(current_date, "SEOUL")
+        tomorrow_weekend = is_off_day(tomorrow, "SEOUL")
+
+        # 주말 상태가 바뀌면 자정에 업데이트 필요
+        if today_weekend != tomorrow_weekend:
+            return korea_tz.localize(datetime.combine(tomorrow, datetime.min.time()))
+
+        # 둘 다 주말이거나 둘 다 평일이면서 공휴일 이름이 바뀔 수 있음
+        if today_weekend and tomorrow_weekend:
+            # 주말 → 주말: 자정에 Saturday → Sunday 또는 Sunday → 평일 체크
+            return korea_tz.localize(datetime.combine(tomorrow, datetime.min.time()))
+        elif not today_weekend and not tomorrow_weekend:
+            # 평일 → 평일: 다음날 07:00
+            return korea_tz.localize(
+                datetime.combine(tomorrow, datetime.min.time().replace(hour=7))
+            )
+        else:
+            # 이미 위에서 처리됨
+            return korea_tz.localize(datetime.combine(tomorrow, datetime.min.time()))
 
     # 2. 22:00 정각: 야간모드 전환이므로 즉시 실행 필요
     if current_hour == 22 and current_minute == 0:
@@ -183,23 +200,21 @@ def calculate_next_update_time(current_time=None):
 
     # 4. 주말/공휴일 체크 (서울 기준)
     if is_off_day(current_date, "SEOUL"):
-        # 주말/공휴일인 경우: 다음 평일 07:00 또는 자정 공휴일 체크
+        # 주말/공휴일인 경우: 자정에 상태 변경 체크
         next_day = current_time + timedelta(days=1)
 
-        # 자정에 공휴일 상태가 바뀔 수 있으므로 자정도 체크
-        midnight_today = korea_tz.localize(
-            datetime.combine(current_date + timedelta(days=1), datetime.min.time())
+        # 자정에 공휴일 상태가 바뀔 수 있으므로 자정 체크
+        midnight_tomorrow = korea_tz.localize(
+            datetime.combine(next_day, datetime.min.time())
         )
 
         # 내일도 휴일인지 확인
-        if is_off_day(next_day.date(), "SEOUL"):
-            # 계속 휴일이면 자정에 한번 체크 (공휴일 이름이 바뀔 수 있음)
-            return midnight_today
+        if is_off_day(next_day, "SEOUL"):
+            # 계속 휴일이면 자정에 한번 체크 (Saturday → Sunday 등)
+            return midnight_tomorrow
         else:
-            # 내일이 평일이면 07:00에 정상모드로 복구
-            return korea_tz.localize(
-                datetime.combine(next_day.date(), datetime.min.time().replace(hour=7))
-            )
+            # 내일이 평일이면 자정에 주말 → 평일 전환
+            return midnight_tomorrow
 
     # 5. 평일 업무시간 (07:00-21:50): 다음 10분 단위
     if 7 <= current_hour < 22:
