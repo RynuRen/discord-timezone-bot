@@ -162,6 +162,9 @@ def calculate_next_update_time(current_time=None):
     current_minute = current_time.minute
     current_date = current_time.date()
 
+    # 디버깅을 위한 로그 추가
+    logger.debug(f"[DEBUG] 현재 시간: {current_time.strftime('%Y-%m-%d %H:%M')}")
+
     # 1. 야간 시간 (22:01 ~ 06:59): 우선 자정 체크, 그 다음 07:00
     if (
         (current_hour == 22 and current_minute > 0)
@@ -198,26 +201,12 @@ def calculate_next_update_time(current_time=None):
     if current_hour == 7 and current_minute == 0:
         return current_time
 
-    # 4. 주말/공휴일 체크 (서울 기준)
-    if is_off_day(current_date, "SEOUL"):
-        # 주말/공휴일인 경우: 자정에 상태 변경 체크
-        next_day = current_time + timedelta(days=1)
+    # 4. 평일 업무시간 (07:00-21:50): 다음 10분 단위
+    # 두 지역 중 하나라도 평일이면 10분 단위 업데이트 필요
+    seoul_is_off_day = is_off_day(current_date, "SEOUL")
+    hcmc_is_off_day = is_off_day(current_date, "HCMC")
 
-        # 자정에 공휴일 상태가 바뀔 수 있으므로 자정 체크
-        midnight_tomorrow = korea_tz.localize(
-            datetime.combine(next_day, datetime.min.time())
-        )
-
-        # 내일도 휴일인지 확인
-        if is_off_day(next_day, "SEOUL"):
-            # 계속 휴일이면 자정에 한번 체크 (Saturday → Sunday 등)
-            return midnight_tomorrow
-        else:
-            # 내일이 평일이면 자정에 주말 → 평일 전환
-            return midnight_tomorrow
-
-    # 5. 평일 업무시간 (07:00-21:50): 다음 10분 단위
-    if 7 <= current_hour < 22:
+    if 7 <= current_hour < 22 and not (seoul_is_off_day and hcmc_is_off_day):
         # 현재 분을 10분 단위로 올림
         next_minute = ((current_minute // 10) + 1) * 10
 
@@ -240,6 +229,24 @@ def calculate_next_update_time(current_time=None):
                 datetime.min.time().replace(hour=next_hour, minute=next_minute),
             )
         )
+
+    # 5. 주말/공휴일 체크 (두 지역 모두 휴일인 경우)
+    if seoul_is_off_day and hcmc_is_off_day:
+        # 주말/공휴일인 경우: 자정에 상태 변경 체크
+        next_day = current_time + timedelta(days=1)
+
+        # 자정에 공휴일 상태가 바뀔 수 있으므로 자정 체크
+        midnight_tomorrow = korea_tz.localize(
+            datetime.combine(next_day, datetime.min.time())
+        )
+
+        # 내일도 휴일인지 확인
+        if is_off_day(next_day, "SEOUL"):
+            # 계속 휴일이면 자정에 한번 체크 (Saturday → Sunday 등)
+            return midnight_tomorrow
+        else:
+            # 내일이 평일이면 자정에 주말 → 평일 전환
+            return midnight_tomorrow
 
     # 기본값: 1시간 후 (예외 상황)
     return current_time + timedelta(hours=1)
@@ -330,7 +337,7 @@ async def update_channel_names(client_instance):
             if is_night_mode:
                 # 야간 모드에서는 수면 상태 표시
                 night_text, night_emoji = get_night_mode_status(name)
-                new_name = f"{info['emoji']}∥{night_text} {night_emoji}"
+                new_name = f"{info['emoji']} | {night_text} {night_emoji}"
                 logger.info(
                     f"[NIGHT_MODE] {info['name']} - {night_text} ({night_emoji})"
                 )
@@ -351,10 +358,10 @@ async def update_channel_names(client_instance):
                     )
                 else:
                     # 평일인 경우 - 시간과 업무 상태 이모지 사용
-                    time_str = now.strftime("%H：%M")
+                    time_str = now.strftime("%H:%M")
                     status_emoji = get_availability_status(now, name)
 
-                new_name = f"{info['emoji']}∥{time_str} {status_emoji}"
+                new_name = f"{info['emoji']} | {time_str} {status_emoji}"
 
             # 채널 이름이 이미 같다면 스킵
             if channel.name == new_name:

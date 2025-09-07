@@ -9,11 +9,11 @@ from apscheduler.triggers.cron import CronTrigger
 
 try:
     from .utils import setup_logging, check_discord_token
-    from .updater import calculate_next_update_time
+    from .updater import calculate_next_update_time, is_off_day
 except ImportError:
     # 직접 실행될 때를 위한 대체 import
     from utils import setup_logging, check_discord_token
-    from updater import calculate_next_update_time
+    from updater import calculate_next_update_time, is_off_day
 
 # 로깅 설정
 logger = setup_logging("discord_main")
@@ -214,20 +214,35 @@ def job_wrapper():
         time_until_update = (next_update_time - now).total_seconds()
 
         # 평일 업무시간(07:00-21:50)에는 정확히 10분 단위로 실행해야 함
+        # 두 지역 중 하나라도 평일이면 업데이트 필요
+        seoul_is_off_day = is_off_day(now.date(), "SEOUL")
+        hcmc_is_off_day = is_off_day(now.date(), "HCMC")
+
+        # 두 지역 중 하나라도 평일이면 업무시간으로 간주
         is_workday_hours = (
-            7 <= current_hour <= 21 and now.weekday() < 5  # 월-금
+            7 <= current_hour <= 21
+            and not (seoul_is_off_day and hcmc_is_off_day)  # 둘 다 휴일이 아닌 경우
         )
 
         # 평일 업무시간이면 5분 기준 무시하고 실행
         if is_workday_hours:
-            logger.info(f"[WORKDAY] 평일 업무시간 - 정확한 시간 업데이트를 위해 실행")
+            logger.info(f"[WORKDAY] 업무시간 - 정확한 시간 업데이트를 위해 실행")
+            logger.info(
+                f"[DEBUG] 서울 휴일: {seoul_is_off_day}, 베트남 휴일: {hcmc_is_off_day}"
+            )
+            logger.info(
+                f"[DEBUG] 다음 업데이트 예정: {next_update_time.strftime('%Y-%m-%d %H:%M:%S')}"
+            )
         # 평일 업무시간이 아니면 5분 기준 효율성 체크
         elif time_until_update > 300:  # 5분 = 300초
             logger.info(
                 f"[EFFICIENCY] 다음 업데이트까지 {time_until_update / 60:.1f}분 남음 - 실행 스킵"
             )
             logger.info(
-                f"[NEXT_UPDATE] 다음 업데이트 예정: {next_update_time.strftime('%H:%M')}"
+                f"[NEXT_UPDATE] 다음 업데이트 예정: {next_update_time.strftime('%Y-%m-%d %H:%M:%S')}"
+            )
+            logger.info(
+                f"[DEBUG] 서울 휴일: {seoul_is_off_day}, 베트남 휴일: {hcmc_is_off_day}"
             )
             logger.info("[WAIT] 다음 실행까지 대기 중...")
             print("-" * 50)
@@ -235,6 +250,12 @@ def job_wrapper():
         else:
             logger.info(
                 f"[EFFICIENCY] 다음 업데이트까지 {time_until_update / 60:.1f}분 - 실행 필요"
+            )
+            logger.info(
+                f"[DEBUG] 서울 휴일: {seoul_is_off_day}, 베트남 휴일: {hcmc_is_off_day}"
+            )
+            logger.info(
+                f"[DEBUG] 다음 업데이트 예정: {next_update_time.strftime('%Y-%m-%d %H:%M:%S')}"
             )
     except Exception as e:
         logger.warning(f"[WARNING] 업데이트 시점 계산 실패: {e} - 기본 로직으로 진행")
