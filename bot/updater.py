@@ -85,6 +85,7 @@ VN_HOLIDAY_EMOJIS = {
 # 딕셔너리에 없는 공휴일을 위한 기본 이모지
 DEFAULT_HOLIDAY_EMOJI = "🗓️"
 
+
 # 긴 공휴일명 축약 매핑
 HOLIDAY_SHORT_NAMES = {
     # 베트남 설날 관련 축약
@@ -337,7 +338,9 @@ async def update_channel_names(client_instance):
             if is_night_mode:
                 # 야간 모드에서는 수면 상태 표시
                 night_text, night_emoji = get_night_mode_status(name)
-                new_name = f"{info['emoji']} | {night_text} {night_emoji}"
+                new_name = (
+                    f"{info['emoji']}∥{night_text}-{night_emoji}"  # Discord 호환 형식
+                )
                 logger.info(
                     f"[NIGHT_MODE] {info['name']} - {night_text} ({night_emoji})"
                 )
@@ -353,15 +356,16 @@ async def update_channel_names(client_instance):
                     # 휴일/주말인 경우 - 공휴일명과 해당 이모지 사용
                     time_str = holiday_name
                     status_emoji = holiday_emoji
+                    new_name = f"{info['emoji']}∥{time_str}-{status_emoji}"  # Discord 호환 형식
                     logger.info(
                         f"[HOLIDAY] {info['name']} - {holiday_name} ({holiday_emoji})"
                     )
                 else:
                     # 평일인 경우 - 시간과 업무 상태 이모지 사용
-                    time_str = now.strftime("%H:%M")
+                    # Discord 호환을 위해 유니코드 유사 문자 사용
+                    time_str = now.strftime("%H：%M")  # : 대신 ：(fullwidth colon) 사용
                     status_emoji = get_availability_status(now, name)
-
-                new_name = f"{info['emoji']} | {time_str} {status_emoji}"
+                    new_name = f"{info['emoji']}∥{time_str}-{status_emoji}"  # | 대신 ∥(double vertical line) 사용
 
             # 채널 이름이 이미 같다면 스킵
             if channel.name == new_name:
