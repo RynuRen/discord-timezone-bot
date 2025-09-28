@@ -167,6 +167,7 @@ def calculate_next_update_time(current_time=None):
     logger.debug(f"[DEBUG] 현재 시간: {current_time.strftime('%Y-%m-%d %H:%M')}")
 
     # 1. 야간 시간 (22:01 ~ 06:59): 우선 자정 체크, 그 다음 07:00
+    # 7시대는 정상 모드 복구 시간이므로 야간 시간에서 제외
     if (
         (current_hour == 22 and current_minute > 0)
         or (current_hour > 22)
@@ -198,8 +199,8 @@ def calculate_next_update_time(current_time=None):
     if current_hour == 22 and current_minute == 0:
         return current_time
 
-    # 3. 07:00 정각: 정상모드 복구이므로 즉시 실행 필요
-    if current_hour == 7 and current_minute == 0:
+    # 3. 07:00~07:59: 정상모드 복구이므로 즉시 실행 필요
+    if current_hour == 7:
         return current_time
 
     # 4. 평일 업무시간 (07:00-21:50): 다음 10분 단위

@@ -181,9 +181,11 @@ def job_wrapper():
         print("-" * 50)
         return
 
-    # 특별 처리: 07:00에는 정상 모드로 복구
-    if current_hour == 7 and current_minute == 0:
-        logger.info("[MORNING_MODE] 07:00 - 정상 모드로 복구합니다")
+    # 특별 처리: 07:00~07:59에는 정상 모드로 복구 (야간 모드 해제)
+    if current_hour == 7:
+        logger.info(
+            f"[MORNING_MODE] {current_hour:02d}:{current_minute:02d} - 정상 모드로 복구합니다"
+        )
         minute = now.minute
         logger.info(f"[START] 스케줄 작업 시작 (현재 시간: {minute}분)")
         success = run_bot()
@@ -195,7 +197,7 @@ def job_wrapper():
         print("-" * 50)
         return
 
-    # 한국 시간 기준 22:01 ~ 06:59 사이에는 실행하지 않음
+    # 한국 시간 기준 22:01 ~ 06:59 사이에는 실행하지 않음 (7시대는 위에서 이미 처리됨)
     if (
         (current_hour == 22 and current_minute > 0)
         or (current_hour > 22)
@@ -281,11 +283,13 @@ def main():
     """메인 스케줄러 함수 - APScheduler 사용"""
     logger.info("[INIT] Discord 타임존 봇 스케줄러를 시작합니다 (APScheduler)")
     logger.info(
-        "[SCHEDULE] 업무 시간(07:00-21:50): 정각 10분 단위로 실행 (0, 10, 20, 30, 40, 50분)"
+        "[SCHEDULE] 업무 시간(07:00-21:50): 정확히 10분 단위로 실행 (0, 10, 20, 30, 40, 50분)"
     )
     logger.info("[SCHEDULE] 야간 모드(22:00): 수면 상태로 전환")
-    logger.info("[SCHEDULE] 정상 모드(07:00): 시간 표시로 복구")
-    logger.info("[SCHEDULE] 휴일/주말은 각 채널별로 개별 처리됩니다")
+    logger.info(
+        "[SCHEDULE] 정상 모드(07:00): 야간 모드 해제 시 평일/주말 자동 감지하여 복구"
+    )
+    logger.info("[SCHEDULE] 휴일/주말은 자동으로 감지되어 처리됩니다")
 
     # 현재 시간대 정보 출력
     current_time = datetime.now()
